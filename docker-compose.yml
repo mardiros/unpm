@@ -1,0 +1,5 @@
+unpm:
+  image: node
+  volumes:
+    - .:/root
+  working_dir: /root
