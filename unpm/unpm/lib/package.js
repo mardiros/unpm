@@ -43,7 +43,14 @@ Version.prototype.get_dependencies = function(callback, errback, _currents, _for
   var dependencies = [];
   Object.keys(self.dependencies).forEach(function(depname) {
     var depver = self.dependencies[depname];
-    dependencies.push(new Package(depname, depver))
+    if (depname in Package.instances) {
+      var pkg = Package.instances[depname];
+      pkg.push_required_version(depver);
+      dependencies.push(pkg);
+    }
+    else {
+      dependencies.push(new Package(depname, depver))
+    }
   });
   
   function build_dependency(dependencies) {
@@ -55,7 +62,7 @@ Version.prototype.get_dependencies = function(callback, errback, _currents, _for
       else {
         var __for = self.name + '==' + self.version;
       }
-      pkg.get_dependencies(
+      pkg._get_dependencies(
         function(dep_result) {
           Object.keys(dep_result).forEach(function(key) {
             if (key in result) {
@@ -91,11 +98,20 @@ Version.prototype.get_dependencies = function(callback, errback, _currents, _for
  */
 var Package = function(name, required_version) {
   this.name = name;
-  this.required_version = required_version || '*';
+  required_version = required_version || '*';
+  this.required_versions = [required_version];
   this.versions = [];
+  Package.instances[this.name] = this;
 }
 
 Package.metadatas = {}
+Package.instances = {}
+
+Package.prototype.push_required_version = function(version) {
+  if (this.required_versions.indexOf(version) < 0) {
+    this.required_versions.push(version);
+  }
+}
 
 Package.prototype.get_metadata = function(callback, errback) {
 
@@ -128,15 +144,18 @@ Package.prototype.get_metadata = function(callback, errback) {
 
 }
 
-Package.prototype.build_versions = function(required_version) {
+Package.prototype.build_versions = function() {
+  var self = this;
   var metadata = Package.metadatas[this.name];
   var versions = [];
 
   Object.keys(metadata['versions']).forEach(function(version) {
-    if (semver.satisfies(version, required_version)) {
-      var ver_data = metadata['versions'][version];
-      versions.push([version, ver_data['dependencies'] || {}]);
-    }
+    self.required_versions.forEach(function(required_version) {
+      if (semver.satisfies(version, required_version)) {
+        var ver_data = metadata['versions'][version];
+        versions.push([version, ver_data['dependencies'] || {}]);
+      }
+    });
   });
 
   if (versions.length == 0) {
@@ -146,19 +165,16 @@ Package.prototype.build_versions = function(required_version) {
   // newest version first
   versions.sort(function(el0, el1) { return semver.compare(el1[0], el0[0]) });
   var self = this;
-  versions.forEach(function(version){
+  versions.forEach(function(version) {
     self.versions.push(new Version(self.name, version[0], version[1]));
   });
 }
 
-Package.prototype.get_dependencies = function(callback, errback, _currents, _for) {
+Package.prototype._get_dependencies = function(callback, errback, _currents, _for) {
 
   var self = this;
 
-  _log(util.format('\n\nLoading dependencies of %s', self.name));
-  if (_for) {
-    _log('for ' + _for);
-  }
+  _log(util.format('\n\nLoading dependencies of %s for %s', self.name, _for));
   
   var on_version_loaded = function(result) {
     // _log(util.format('Dependencies of %s are loaded: %s', self.name));
@@ -166,7 +182,7 @@ Package.prototype.get_dependencies = function(callback, errback, _currents, _for
   }
 
   var build_with_next_version = function(versions) {
-    var version = versions.shift();  // initialize with the on_metadata
+    var version = versions.shift();
     if (version) {
       _log(util.format('Build %s with %s',
                   version.name, version.version));
@@ -185,7 +201,8 @@ Package.prototype.get_dependencies = function(callback, errback, _currents, _for
   }
 
   var on_metadata = function() {
-    self.build_versions(self.required_version);
+    self.build_versions();
+    // self.versions is initialized with the on_metadata
     build_with_next_version(self.versions.slice());
   }
 
@@ -202,5 +219,46 @@ Package.prototype.get_dependencies = function(callback, errback, _currents, _for
   }
 }
 
+
+Package.prototype.get_dependencies = function(callback, errback) {
+  var self = this;
+
+  self._get_dependencies(
+      function(result) {
+        var cb_result = {};
+        var conflicts = {}
+        Object.keys(result).forEach(function(key) {
+
+          var no_conflict = true;
+          var versions = result[key];
+          for ( var i = 0; i < versions.length; i++ ) {
+            var version = versions[i];
+            Package.instances[key].required_versions.forEach(function(required_version) {
+              no_conflict = no_conflict && semver.satisfies(version, required_version);
+            })
+            if (no_conflict) {
+              break;
+            }
+          }
+          if (no_conflict) {
+            cb_result[key] = version;
+          }
+          else {
+            conflicts[key] = Package.instances[key].required_versions;
+          }
+        })
+        if (Object.keys(conflicts) == 0) {
+          callback(cb_result);
+        }
+        else {
+          Object.keys(conflicts).forEach(function(key) {
+            console.log(util.format('Conflict with %s==%s: %s', key,
+                result[key], conflicts[key]))
+          });
+          errback(conflicts);
+        }
+      },
+      errback, {}, self.name);
+}
 
 module.exports = {'Package': Package};
