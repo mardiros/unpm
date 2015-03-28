@@ -123,7 +123,7 @@ Package.prototype.get_metadata = function(callback, errback) {
 
   }).on('error', function(e) {
     _log('Got error: ' + e.message);
-    throw Error('Package {} deleted from {}'.format(this.name, registry_root))
+    throw Error('Package {} deleted from {}'.format(this.name, REGISTRY_ROOT))
   });
 
 }
