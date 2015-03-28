@@ -7,13 +7,14 @@ module.exports = function execute(args) {
   var running = true;
 
   function callback(deps) {
-    deps.sort();
-    deps.forEach(function(dep) {
-      console.log(dep);
+    var dep_names = Object.keys(deps)
+    dep_names.sort();
+    dep_names.forEach(function(dep) {
+      console.log(dep+ ' ' + deps[dep].join(','));
       running = false;
     });
   }
-  
+
   function errback(err) {
     throw err;
   }

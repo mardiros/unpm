@@ -29,9 +29,15 @@ Version.prototype.get_dependencies = function(callback, errback, _currents, _for
   var self = this;
   var result = _currents;
 
-  if ( result.indexOf((self.name + '==' + self.version)) >= 0 ) {
-    callback(result);
-    return
+  if (self.name in result) {
+    if (result[self.name].indexOf(self.version) >= 0) {
+      callback(result);
+      return
+    }
+    result[self.name].push(self.version)
+  }
+  else {
+    result[self.name] = [self.version];
   }
 
   var dependencies = [];
@@ -49,22 +55,30 @@ Version.prototype.get_dependencies = function(callback, errback, _currents, _for
       else {
         var __for = self.name + '==' + self.version;
       }
-      pkg.get_dependencies(function(dep_result){
-                             dep_result.forEach(function(res) {
-                               if (result.indexOf(res) < 0) {
-                                 result.push(res);
-                               }
-                             });
-                             build_dependency(dependencies);
-                           },
-                           errback,
-                           result,
-                           __for);
+      pkg.get_dependencies(
+        function(dep_result) {
+          Object.keys(dep_result).forEach(function(key) {
+            if (key in result) {
+              dep_result[key].forEach(function(version) {
+                if (result[key].indexOf(version) < 0) {
+                  result[key].push(version);
+                }
+              });
+            }
+            else {
+              result[key] = dep_result[key];
+            }
+          });
+          build_dependency(dependencies);
+        },
+        errback,
+        result,
+        __for);
     }
     else {
-      if (result.indexOf((self.name + '==' + self.version)) < 0) {
-        result.push(self.name + '==' + self.version);
-      }
+      //if (result.indexOf((self.name + '==' + self.version)) < 0) {
+      //  result.push(self.name + '==' + self.version);
+      //}
       callback(result);
     }
   }
@@ -147,7 +161,7 @@ Package.prototype.get_dependencies = function(callback, errback, _currents, _for
   }
   
   var on_version_loaded = function(result) {
-    _log(util.format('Dependencies of %s are loaded: %s', self.name, result));
+    // _log(util.format('Dependencies of %s are loaded: %s', self.name));
     callback(result);
   }
 
@@ -161,7 +175,7 @@ Package.prototype.get_dependencies = function(callback, errback, _currents, _for
                                  // test errors
                                  build_with_next_version(versions);
                                },
-                               _currents || [],
+                               _currents || {},
                                _for || '');
     }
     else {
