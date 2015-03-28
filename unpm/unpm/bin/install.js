@@ -18,10 +18,14 @@ module.exports = function execute(args) {
   function errback(err) {
     throw err;
   }
+  var pkg_name = args[0];
+  var version = '*';
+  if (args.length > 1) {
+    version = args[1];
+  }
 
   var pkg = new Package(args[0], args[1]);
   pkg.get_dependencies(callback, errback);
-
   
   (function wait () {
     if (running) setTimeout(wait, 1000);
