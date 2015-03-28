@@ -8,11 +8,11 @@ var semver = require('../../vendors/semver');
 var REGISTRY_ROOT = 'https://registry.npmjs.org/';
 
 
-var VERBOSE = 0;
+var VERBOSE = 1;
 
 function _log(msg) {
   if (VERBOSE) {
-    console.log(msg)
+    console.log(msg);
   }
 }
 
