@@ -271,27 +271,46 @@ Package.install = function(name, version, callback, errback) {
   var url = metadata['dist']['tarball'].replace(/^http:/, 'https:')
 
   var local_tarball = util.format('./node_modules/%s-%s.tar.gz', name, version);
-  // XXX does not check the SHA1 SUM metadata['dist']['shasum']!!!
-  // tarball and wget lib does not implement that kind of check
-  tarball.extractTarballDownload(url,
-      local_tarball,
-      util.format('./node_modules/%s', name),
-      {},
-      function(err, result) {
-        fs.unlink(local_tarball, function (err2) {
-          if (err2) {
-            console.log(util.format('Problem while deleting file %s', local_tarball));
-          }
 
-          if (err) {
-            errback(err);
-          }
-          else {
-            callback();
-          }
+  var extract_tarball = function() {
+    // XXX does not check the SHA1 SUM metadata['dist']['shasum']!!!
+    // tarball and wget lib does not implement that kind of check
+    tarball.extractTarballDownload(url,
+        local_tarball,
+        util.format('./node_modules/%s-%s', name, version),
+        {},
+        function(err, result) {
+          fs.unlink(local_tarball, function (err2) {
+            if (err2) {
+              console.log(util.format('Problem while deleting file %s', local_tarball));
+            }
+            fs.rename(
+                util.format('./node_modules/%s-%s/package', name, version),
+                util.format('./node_modules/%s', name),
+                function() {
+                  fs.rmdir(util.format('./node_modules/%s-%s', name, version),
+                    function() {
+                      if (err) {
+                        errback(err);
+                      }
+                      else {
+                        callback();
+                      }
+                    });
+                });
+          });
         });
+  }
 
-      });
+  fs.exists('./node_modules', function(exists) {
+    if (exists) {
+      extract_tarball();
+    }
+    else {
+      fs.mkdir('./node_modules', '0750', extract_tarball);
+    }
+  })
+
 }
 
 module.exports = {'Package': Package};
