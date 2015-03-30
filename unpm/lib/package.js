@@ -1,9 +1,11 @@
 'use strict';
 
-var https = require('https'),
+var fs = require('fs'),
+  https = require('https'),
   util = require('util');
 
-var semver = require('../../vendors/semver');
+var semver = require('semver'),
+  tarball = require('tarball-extract');
 
 var REGISTRY_ROOT = 'https://registry.npmjs.org/';
 
@@ -129,7 +131,7 @@ Package.prototype.get_metadata = function(callback, errback) {
         json = JSON.parse(response);  
       }
       catch (exc) {
-        errback(exc);  
+        errback(exc);
       }
       if (json  !== null) {
         callback(json);
@@ -255,10 +257,41 @@ Package.prototype.get_dependencies = function(callback, errback) {
             console.log(util.format('Conflict with %s==%s: %s', key,
                 result[key], conflicts[key]))
           });
-          errback(conflicts);
+          errback(Error('Conflicts not resolved'));
         }
       },
       errback, {}, self.name);
+}
+
+
+Package.install = function(name, version, callback, errback) {
+  _log(util.format('Installing %s==%s', name, version));
+
+  var metadata = Package.metadatas[name]['versions'][version];
+  var url = metadata['dist']['tarball'].replace(/^http:/, 'https:')
+
+  var local_tarball = util.format('./node_modules/%s-%s.tar.gz', name, version);
+  // XXX does not check the SHA1 SUM metadata['dist']['shasum']!!!
+  // tarball and wget lib does not implement that kind of check
+  tarball.extractTarballDownload(url,
+      local_tarball,
+      util.format('./node_modules/%s', name),
+      {},
+      function(err, result) {
+        fs.unlink(local_tarball, function (err2) {
+          if (err2) {
+            console.log(util.format('Problem while deleting file %s', local_tarball));
+          }
+
+          if (err) {
+            errback(err);
+          }
+          else {
+            callback();
+          }
+        });
+
+      });
 }
 
 module.exports = {'Package': Package};
