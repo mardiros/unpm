@@ -276,19 +276,19 @@ Package.install = function(name, version, callback, errback) {
     // XXX does not check the SHA1 SUM metadata['dist']['shasum']!!!
     // tarball and wget lib does not implement that kind of check
     tarball.extractTarballDownload(url,
-        local_tarball,
-        util.format('./node_modules/%s-%s', name, version),
-        {},
-        function(err, result) {
-          fs.unlink(local_tarball, function (err2) {
-            if (err2) {
-              console.log(util.format('Problem while deleting file %s', local_tarball));
-            }
-            fs.rename(
-                util.format('./node_modules/%s-%s/package', name, version),
-                util.format('./node_modules/%s', name),
-                function() {
-                  fs.rmdir(util.format('./node_modules/%s-%s', name, version),
+      local_tarball,
+      util.format('./node_modules/%s-%s', name, version),
+      {},
+      function(err, result) {
+        fs.unlink(local_tarball, function (err2) {
+          if (err2) {
+            console.log(util.format('Problem while deleting file %s', local_tarball));
+          }
+          fs.rename(
+            util.format('./node_modules/%s-%s/package', name, version),
+            util.format('./node_modules/%s', name),
+            function() {
+              fs.rmdir(util.format('./node_modules/%s-%s', name, version),
                     function() {
                       if (err) {
                         errback(err);
@@ -296,10 +296,10 @@ Package.install = function(name, version, callback, errback) {
                       else {
                         callback();
                       }
-                    });
                 });
-          });
+            });
         });
+      });
   }
 
   fs.exists('./node_modules', function(exists) {
