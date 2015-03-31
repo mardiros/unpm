@@ -32,13 +32,15 @@ module.exports = function execute(args) {
   function errback(err) {
     throw err;
   }
-  var pkg_name = args[0];
+
+  var splitted_args = args[0].split('@')
+  var pkg_name = splitted_args.shift();
   var version = '*';
-  if (args.length > 1) {
-    version = args[1];
+  if (splitted_args) {
+    version = splitted_args.shift();
   }
 
-  var pkg = new Package(args[0], args[1]);
+  var pkg = new Package(pkg_name, version);
   pkg.get_dependencies(got_dependencies, errback);
   
   (function wait () {
