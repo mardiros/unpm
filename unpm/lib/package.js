@@ -59,10 +59,10 @@ Version.prototype.get_dependencies = function(callback, errback, _currents, _for
     if (dependencies.length > 0) {
       var pkg = dependencies.pop();
       if (_for) {
-        var __for = self.name + '==' + self.version + ' <- ' + _for;
+        var __for = self.name + '@' + self.version + ' <- ' + _for;
       }
       else {
-        var __for = self.name + '==' + self.version;
+        var __for = self.name + '@' + self.version;
       }
       pkg._get_dependencies(
         function(dep_result) {
@@ -100,9 +100,8 @@ Version.prototype.get_dependencies = function(callback, errback, _currents, _for
  */
 var Package = function(name, required_version) {
   this.name = name;
-  required_version = required_version || '*';
-  this.required_versions = [required_version];
-  this.versions = [];
+  this.required_versions = [required_version || '*'];
+  this.versions = null;
   Package.instances[this.name] = this;
 }
 
@@ -110,6 +109,7 @@ Package.metadatas = {}
 Package.instances = {}
 
 Package.prototype.push_required_version = function(version) {
+  version = version || '*';
   if (this.required_versions.indexOf(version) < 0) {
     this.required_versions.push(version);
   }
@@ -167,6 +167,7 @@ Package.prototype.build_versions = function() {
   // newest version first
   versions.sort(function(el0, el1) { return semver.compare(el1[0], el0[0]) });
   var self = this;
+  self.versions = [];
   versions.forEach(function(version) {
     self.versions.push(new Version(self.name, version[0], version[1]));
   });
@@ -225,47 +226,66 @@ Package.prototype._get_dependencies = function(callback, errback, _currents, _fo
 Package.prototype.get_dependencies = function(callback, errback) {
   var self = this;
 
-  self._get_dependencies(
-      function(result) {
-        var cb_result = {};
-        var conflicts = {}
-        Object.keys(result).forEach(function(key) {
+  var got_deps = function(result) {
+    var cb_result = {};
+    var conflicts = {};
+    Object.keys(result).forEach(function(key) {
 
-          var no_conflict = true;
-          var versions = result[key];
-          for ( var i = 0; i < versions.length; i++ ) {
-            var version = versions[i];
-            Package.instances[key].required_versions.forEach(function(required_version) {
-              no_conflict = no_conflict && semver.satisfies(version, required_version);
-            })
-            if (no_conflict) {
-              break;
-            }
-          }
-          if (no_conflict) {
-            cb_result[key] = version;
-          }
-          else {
-            conflicts[key] = Package.instances[key].required_versions;
-          }
+      var no_conflict = true;
+      var versions = result[key];
+      for ( var i = 0; i < versions.length; i++ ) {
+        var version = versions[i];
+        Package.instances[key].required_versions.forEach(function(required_version) {
+          no_conflict = no_conflict && semver.satisfies(version, required_version);
         })
-        if (Object.keys(conflicts) == 0) {
-          callback(cb_result);
+        if (no_conflict) {
+          break;
         }
-        else {
-          Object.keys(conflicts).forEach(function(key) {
-            console.log(util.format('Conflict with %s==%s: %s', key,
-                result[key], conflicts[key]))
+      }
+      if (no_conflict) {
+        cb_result[key] = version;
+      }
+      else {
+        conflicts[key] = Package.instances[key].required_versions;
+        conflicts[key].sort(semver.compare);
+        // Cleaning now for next run
+        Package.instances[key].required_versions = [conflicts[key][0]];
+      }
+    })
+    if (Object.keys(conflicts) == 0) {
+      callback(cb_result);
+    }
+    else {
+      Object.keys(conflicts).forEach(function(key) {
+        console.log(util.format('Conflict with %s@%s: %s', key,
+            result[key], conflicts[key]));
+
+        conflicts[key].shift();
+        conflicts[key].forEach(function(conflict_version) {
+          Object.keys(Package.instances).forEach(function(pkg_name){
+            var meta = Package.metadatas[pkg_name];
+            console.log(pkg_name);
+            //Dropping version having the greatest deps version
+            Object.keys(meta['versions']).forEach(function(version) {
+              if (meta['versions'][version]['dependencies'] &&
+                  meta['versions'][version]['dependencies'][key] == conflict_version) {
+                console.log('Dropping ' + pkg_name + '@' + version+ ', not installable because ' + key + '@' + conflict_version + ' is not installable');
+                delete meta['versions'][version];
+              }
+            });
           });
-          errback(Error('Conflicts not resolved'));
-        }
-      },
-      errback, {}, self.name);
+        });
+      });
+      console.log('Retrying with lower version');
+      self._get_dependencies(got_deps, errback, {}, self.name);
+    }
+  }
+  self._get_dependencies(got_deps, errback, {}, self.name);
 }
 
 
 Package.install = function(name, version, callback, errback) {
-  _log(util.format('Installing %s==%s', name, version));
+  _log(util.format('Installing %s@%s', name, version));
 
   var metadata = Package.metadatas[name]['versions'][version];
   var url = metadata['dist']['tarball'].replace(/^http:/, 'https:')
