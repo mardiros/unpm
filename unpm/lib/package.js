@@ -247,11 +247,41 @@ Package.prototype.get_dependencies = function(callback, errback) {
       }
       else {
         conflicts[key] = Package.instances[key].required_versions;
-        conflicts[key].sort(semver.compare);
-        // Cleaning now for next run
-        Package.instances[key].required_versions = [conflicts[key][0]];
+        try {
+          // optimistic
+          conflicts[key].sort(semver.compare);
+          // Cleaning now for next run
+          Package.instances[key].required_versions = [conflicts[key][0]];
+        }
+        catch (exc) {
+          _log(util.format('Cannot order conflicts version for %s: %s ',
+            key, Package.instances[key].required_versions.join(',')));
+          // This is not perfect at all, should be improved
+          var last_chance = {}
+          conflicts[key].forEach(function(range) {
+            var last_ver = semver.maxSatisfying(Object.keys(Package.metadatas[key]['versions']), range)
+            if (last_ver in last_chance) {
+              last_chance[last_ver].push(range);
+            }
+            else {
+              last_chance[last_ver] = [range];
+            }
+          });
+          var last_chance_sortable = Object.keys(last_chance);
+          last_chance_sortable.sort(semver.compare);
+
+          // Cleaning now for next run
+          Package.instances[key].required_versions = last_chance[last_chance_sortable[0]];
+          conflicts[key] = [];
+          last_chance_sortable.forEach(function(version) {
+            last_chance[version].forEach(function(range) {
+              conflicts[key].push(last_chance[range]);
+            });
+          });
+          _log(util.format('Confict of %s reordered: %s', key, conflicts[key].join(',')));
+        }
       }
-    })
+    });
     if (Object.keys(conflicts) == 0) {
       callback(cb_result);
     }
@@ -260,11 +290,12 @@ Package.prototype.get_dependencies = function(callback, errback) {
         console.log(util.format('Conflict with %s@%s: %s', key,
             result[key], conflicts[key]));
 
-        conflicts[key].shift();
+        while (Package.instances[key].required_versions.indexOf(conflicts[key][0]) >= 0 ) {
+          conflicts[key].shift();
+        }
         conflicts[key].forEach(function(conflict_version) {
           Object.keys(Package.instances).forEach(function(pkg_name){
             var meta = Package.metadatas[pkg_name];
-            console.log(pkg_name);
             //Dropping version having the greatest deps version
             Object.keys(meta['versions']).forEach(function(version) {
               if (meta['versions'][version]['dependencies'] &&
